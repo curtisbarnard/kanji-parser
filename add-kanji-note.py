@@ -1,32 +1,16 @@
 import requests
 from bs4 import BeautifulSoup
 import urllib.parse
+import json
 
 # Define the AnkiConnect endpoint
 ANKI_CONNECT_URL = "http://localhost:8765"
+file_path = "kanji_data_output.json"
 
-# JSON data
-data = {
-    "日本": {
-        "kanji": ["日"],
-        "radicals": {
-            "日": ["日"],
-        }
-    },
-    "語学": {
-        "kanji": ["語", "学"],
-        "radicals": {
-            "語": ["言", "口", "五"],
-            "学": ["子", "尚", "冖"]
-        }
-    },
-    "学校": {
-        "kanji": ["学",],
-        "radicals": {
-            "学": ["子", "尚", "冖"],
-        }
-    }
-}
+def load_json_data(file_path):
+    """Load JSON data from a file."""
+    with open(file_path, 'r', encoding='utf-8') as file:
+        return json.load(file)
 
 def parse_kanji_and_radicals(data):
     kanji_set = {}
@@ -48,7 +32,6 @@ def parse_kanji_and_radicals(data):
 
     return kanji_set, radical_set
 
-# Function to check if a card exists
 def card_exists(character):
     payload = {
         "action": "findNotes",
@@ -65,26 +48,6 @@ def card_exists(character):
         print(f"Error checking card for {character}, status code: {response.status_code}")
         return False
 
-# Function to add a note to Anki
-def add_note(note):
-    payload = {
-        "action": "addNote",
-        "version": 6,
-        "params": {
-            "note": note
-        }
-    }
-    response = requests.post(ANKI_CONNECT_URL, json=payload)
-    if response.status_code == 200:
-        result = response.json()
-        if "error" in result and result["error"]:
-            print(f"Error adding note for {note['fields']['Character']}: {result['error']}")
-        else:
-            print(f"Note added for {note['fields']['Character']}")
-    else:
-        print(f"Failed to connect to AnkiConnect: {response.status_code}")
-
-# Function to fetch the keyword and mnemonic from jpdb.io
 def get_keyword_and_mnemonic(character):
     encoded_kanji = urllib.parse.quote(character)
     url = f"https://jpdb.io/kanji/{encoded_kanji}"
@@ -105,6 +68,24 @@ def get_keyword_and_mnemonic(character):
     else:
         print(f"Warning: Failed to fetch data for kanji '{character}', status code: {response.status_code}")
         return "No keyword found", "No mnemonic found"
+
+def add_note(note):
+    payload = {
+        "action": "addNote",
+        "version": 6,
+        "params": {
+            "note": note
+        }
+    }
+    response = requests.post(ANKI_CONNECT_URL, json=payload)
+    if response.status_code == 200:
+        result = response.json()
+        if "error" in result and result["error"]:
+            print(f"Error adding note for {note['fields']['Character']}: {result['error']}")
+        else:
+            print(f"Note added for {note['fields']['Character']}")
+    else:
+        print(f"Failed to connect to AnkiConnect: {response.status_code}")
 
 def create_cards(data, is_radical):
     if is_radical:
@@ -151,11 +132,9 @@ def create_cards(data, is_radical):
             }
             add_note(note)
 
-# Parse data into kanji and radical sets
+
+data = load_json_data(file_path)
+
 kanji_data, radical_data = parse_kanji_and_radicals(data)
-
-# Create kanji cards
 create_cards(kanji_data, is_radical=False)
-
-# Create radical cards
 create_cards(radical_data, is_radical=True)

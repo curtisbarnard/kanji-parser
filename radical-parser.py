@@ -33,13 +33,13 @@ kanji_data_file = "kanjitoradical/kradfile-combined.json"
 kanji_data = load_kanji_data(kanji_data_file)
 
 # Example list of Japanese words
-words = ["日本", "語学", "学校"]
+words = ["日本", "語学", "統領"]
 
 # Parse words using loaded kanji data
 parsed_words = parse_words(words, kanji_data)
 
 # Save the parsed data to a JSON file for studying
-output_file = "test-output.json"
+output_file = "kanji_data_output.json"
 with open(output_file, "w", encoding="utf-8") as file:
     json.dump(parsed_words, file, ensure_ascii=False, indent=4)
 
