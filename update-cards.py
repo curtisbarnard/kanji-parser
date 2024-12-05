@@ -26,22 +26,35 @@ def get_cards_by_tag(tag, note_type=None):
     card_ids = invoke('findCards', query=query)
     return card_ids
 
-def get_card_data(card_id):
-    response = invoke("cardsInfo", cards=[card_id])
-    return response[0]
+def get_card_data(card_ids):
+    response = invoke("cardsInfo", cards=card_ids)
+    return response
 
 def get_card_interval(card_id):
     response = invoke("getIntervals", cards=[card_id])
     return response[0]
 
+def get_note_data(note_ids):
+    response = invoke("notesInfo", notes=note_ids)
+    return response
+
 def get_note_id_for_cards(cards_ids):
     response = invoke('cardsToNotes', cards=cards_ids)
     return response
 
-def get_cards_with_missing_kanji():
+def get_notes_with_missing_kanji():
     query = 'note:"yomitan Japanese" Kanji:'
-    response = invoke("findCards", query=query)
+    response = invoke("findNotes", query=query)
     return response
+
+def update_note(note_id, new_kanji):
+    note = {"id": note_id, "fields": {"Kanji": new_kanji}}
+    response = invoke("updateNoteFields", note=note)
+    return response
+
+def suspend_all_locked():
+    locked_cards = get_cards_by_tag('locked')
+    invoke('suspend', cards=locked_cards)
 
 def move_new_to_known():
     cards_to_update = []
@@ -73,7 +86,7 @@ def unlock_cards(note_type):
     cards_to_unsuspend = []
     card_ids = get_cards_by_tag('locked', note_type)
     for card_id in card_ids:
-        data = get_card_data(card_id)
+        data = get_card_data([card_id])[0]
         dependencies = data['fields'][dependency_type]['value']
         dependency_array = [dependency.strip() for dependency in dependencies.split(',')]
         if check_dependencies_known(dependency_array):
@@ -83,55 +96,42 @@ def unlock_cards(note_type):
             print(f"Card {card_id} still has not yet known {dependency_type}")
     invoke('unsuspend', cards=cards_to_unsuspend)
 
+def update_vocab_notes():
+    note_ids = get_notes_with_missing_kanji()
 
-# unlock_cards("yomitan Japanese")
-# unlock_cards("Japanese Kanji")
-
-def extract_kanji(word):
-    return re.findall(r'\p{Han}', word)
-
-def update_card(card_id, new_kanji):
-    note = {"id": card_id, "fields": {"Kanji": new_kanji}}
-    response = invoke("updateNoteFields", note=note)
-    return response
-
-def add_tags_and_suspend(card_ids, tags):
-    # Add tags
-    invoke("addTags", notes=card_ids, tags=tags)
-
-    # Suspend cards
-    invoke("suspend", cards=card_ids)
-
-def save_kanji_set(kanji_set):
-    with open(KANJI_OUTPUT, "w", encoding="utf-8") as f:
-        json.dump(sorted(kanji_set), f, ensure_ascii=False, indent=4)
-
-def main():
-    # Step 1: Find cards with missing kanji field
-    card_ids = get_cards_with_missing_kanji()
-
-    if not card_ids:
-        print("No cards found with missing kanji.")
+    if not note_ids:
+        print("No notes found with missing kanji.")
         return
 
-    # Step 2: Get card data
-    cards = get_card_data(card_ids)
-
-    # Step 3: Update cards with kanji
+    notes = get_note_data(note_ids)
     kanji_set = set()
-    for card in cards:
-        note_id = card['note']
-        expression = card['fields']['Expression']['value']
+    for note in notes:
+        note_id = note['noteId']
+        expression = note['fields']['Expression']['value']
         kanji_list = extract_kanji(expression)
         if not kanji_list:
             print(f"Skipping {expression} as it doesn't contain kanji")
             continue
         kanji_set.update(kanji_list)
         new_kanji = " ".join(kanji_list)
-        update_card(note_id, new_kanji)
+        update_note(note_id, new_kanji)
+        invoke('addTags', notes=[note_id], tags=["locked"])
 
-    save_kanji_set(kanji_set)
+    return kanji_set
 
-    # Step 4: Add tags and suspend cards
-    add_tags_and_suspend(card_ids, "locked")
-    print(f"Updated {len(card_ids)} cards and suspended them.")
+def extract_kanji(word):
+    return re.findall(r'\p{Han}', word)
+
+# Step 1 is to add kanji to all vocab cards and then create the kanji and radical cards if need be
+kanji_to_create = update_vocab_notes()
+radicals_to_create = create_kanji_cards(kanji_to_create)
+create_radical_cards(radicals_to_create)
+
+# Step 2 is to move all new cards to known if their interval is greater than 45 days
+move_new_to_known()
+
+# Step 3 is to unlock any kanji cards that have all their radicals known
+unlock_cards("Japanese Kanji")
+
+# Step 4 is to unlock and vocab cards that have all their kanji known
+unlock_cards("yomitan Japanese")
