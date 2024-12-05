@@ -1,13 +1,11 @@
 ## New cards workflow
-* Input words
-* Split words into kanji and radicals
-* Check that all kanji are known (interval > 30 days OR tagged as known) for a given word
-    * If not tag as locked and suspend
-* Check that all radicals are known (interval > 30 days OR tagged as known) for a given kanji
-    * If not tag as locked and suspend
-* Create CSV for words
-* Create CSV for kanji
-* Create CSV for radicals
+* Input words with yomitan
+* Get all vocab cards without kanji in their field
+* Split words into kanji
+* Add to card
+* Split kanji into radicals
+* Add cards for kanji and radicals
+* Add as tagged locked and suspend
 
 ## Check cards workflow
 * Get all vocab cards tag locked
