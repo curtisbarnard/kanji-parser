@@ -1,9 +1,10 @@
 import requests
+import urllib.request
 from bs4 import BeautifulSoup
 import urllib.parse
 import json
 
-# This script takes an json file (output from radical-parser.py) and creates kanji and radical cards in anki.
+# This script takes a json file (output from radical-parser.py) and creates kanji and radical cards in anki.
 
 # Define the AnkiConnect endpoint
 ANKI_CONNECT_URL = "http://localhost:8765"
@@ -11,6 +12,22 @@ ANKI_DECK = "Script Testing"
 KANJI_NOTE_TYPE = "Japanese Kanji"
 RADICAL_NOTE_TYPE = "Japanese Radicals"
 file_path = "kanji_data_output.json"
+
+def request(action, **params):
+    return {'action': action, 'params': params, 'version': 6}
+
+def invoke(action, **params):
+    requestJson = json.dumps(request(action, **params)).encode('utf-8')
+    response = json.load(urllib.request.urlopen(urllib.request.Request(ANKI_CONNECT_URL, requestJson)))
+    if len(response) != 2:
+        raise Exception('response has an unexpected number of fields')
+    if 'error' not in response:
+        raise Exception('response is missing required error field')
+    if 'result' not in response:
+        raise Exception('response is missing required result field')
+    if response['error'] is not None:
+        raise Exception(response['error'])
+    return response['result']
 
 def load_json_data(file_path):
     """Load JSON data from a file."""
@@ -21,34 +38,20 @@ def parse_kanji_and_radicals(data):
     kanji_set = {}
     radical_set = set()
 
-    for entry, details in data.items():
-        for kanji in details.get("kanji", []):
-            kanji_set[kanji] = {
-                "radicals": details.get("radicals", {}).get(kanji, []),
-            }
-            radicals = kanji_set[kanji]["radicals"]
-            radical_set.update(radicals)
-
-        for radical in details.get("radicals", []):
-            radical_set.add(radical)
+    for kanji, details in data.items():
+        # Add kanji and its radicals
+        kanji_set[kanji] = {
+            "radicals": details.get("radicals", []),
+        }
+        # Update radical_set with the radicals for this kanji
+        radical_set.update(details.get("radicals", []))
 
     return kanji_set, radical_set
 
 def card_exists(character):
-    payload = {
-        "action": "findNotes",
-        "version": 6,
-        "params": {
-            "query": f"Character:{character}"
-        }
-    }
-    response = requests.post(ANKI_CONNECT_URL, json=payload)
-    if response.status_code == 200:
-        result = response.json()
-        return len(result['result']) > 0
-    else:
-        print(f"Error checking card for {character}, status code: {response.status_code}")
-        return False
+    query = f"Character:{character}"
+    response = invoke("findNotes", query=query)
+    return response
 
 def get_keyword_and_mnemonic(character):
     encoded_kanji = urllib.parse.quote(character)
@@ -70,22 +73,8 @@ def get_keyword_and_mnemonic(character):
         return "No keyword found", "No mnemonic found"
 
 def add_note(note):
-    payload = {
-        "action": "addNote",
-        "version": 6,
-        "params": {
-            "note": note
-        }
-    }
-    response = requests.post(ANKI_CONNECT_URL, json=payload)
-    if response.status_code == 200:
-        result = response.json()
-        if "error" in result and result["error"]:
-            print(f"Error adding note for {note['fields']['Character']}: {result['error']}")
-        else:
-            print(f"Note added for {note['fields']['Character']}")
-    else:
-        print(f"Failed to connect to AnkiConnect: {response.status_code}")
+    response = invoke("addNote", note=note)
+    return response
 
 def create_cards(data, is_radical):
     if is_radical:
