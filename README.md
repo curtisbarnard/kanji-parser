@@ -8,6 +8,8 @@
 * Add as tagged locked and suspend
 
 ## Check cards workflow
+* Get all cards tagged new
+    * If interval is > 45 days retag as known
 * Get all vocab cards tag locked
 * Check for all kanji known
     * If they are tag as new and remove suspended
