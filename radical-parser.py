@@ -1,8 +1,10 @@
 import regex as re
 import json
 
+KANJI_TO_PARSE = "kanji_to_add.json"
+KRADFILE = "kanjitoradical/kradfile-combined.json"
+
 def load_kanji_data(json_file):
-    """Load kanji and radicals from a JSON file."""
     try:
         with open(json_file, 'r', encoding='utf-8') as file:
             return json.load(file)
@@ -13,34 +15,23 @@ def load_kanji_data(json_file):
         print(f"Error: {json_file} is not a valid JSON file.")
         return {}
 
-def extract_kanji(word):
-    """Extract kanji from a Japanese word."""
-    return re.findall(r'\p{Han}', word)
-
-def parse_words(word_list, kanji_data):
-    """Parse words into kanji and radicals."""
+def parse_kanji(kanji_list, kanji_data):
     parsed_data = {}
-    for word in word_list:
-        kanji_list = extract_kanji(word)
-        parsed_data[word] = {
-            "kanji": kanji_list,
-            "radicals": {kanji: kanji_data.get(kanji, []) for kanji in kanji_list}
+    for kanji in kanji_list:
+        parsed_data[kanji] = {
+            "radicals": kanji_data.get(kanji, [])
         }
     return parsed_data
 
-# Load kanji and radicals data from JSON file
-kanji_data_file = "kanjitoradical/kradfile-combined.json"
-kanji_data = load_kanji_data(kanji_data_file)
-
-# Example list of Japanese words
-words = ["日本", "語学", "統領"]
+kanji_to_parse = load_kanji_data(KANJI_TO_PARSE)
+kanji_mapping_data = load_kanji_data(KRADFILE)
 
 # Parse words using loaded kanji data
-parsed_words = parse_words(words, kanji_data)
+parsed_kanji = parse_kanji(kanji_to_parse, kanji_mapping_data)
 
 # Save the parsed data to a JSON file for studying
 output_file = "kanji_data_output.json"
 with open(output_file, "w", encoding="utf-8") as file:
-    json.dump(parsed_words, file, ensure_ascii=False, indent=4)
+    json.dump(parsed_kanji, file, ensure_ascii=False, indent=4)
 
 print(f"Parsed data saved to {output_file}")
