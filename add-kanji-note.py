@@ -3,8 +3,13 @@ from bs4 import BeautifulSoup
 import urllib.parse
 import json
 
+# This script takes an json file (output from radical-parser.py) and creates kanji and radical cards in anki.
+
 # Define the AnkiConnect endpoint
 ANKI_CONNECT_URL = "http://localhost:8765"
+ANKI_DECK = "Script Testing"
+KANJI_NOTE_TYPE = "Japanese Kanji"
+RADICAL_NOTE_TYPE = "Japanese Radicals"
 file_path = "kanji_data_output.json"
 
 def load_json_data(file_path):
@@ -14,21 +19,18 @@ def load_json_data(file_path):
 
 def parse_kanji_and_radicals(data):
     kanji_set = {}
-    radical_set = set()  # Use a set to avoid duplicates
+    radical_set = set()
 
     for entry, details in data.items():
-        # Process kanji
         for kanji in details.get("kanji", []):
             kanji_set[kanji] = {
-                "radicals": details.get("radicals", {}).get(kanji, []),  # Get the list of radicals for the kanji
+                "radicals": details.get("radicals", {}).get(kanji, []),
             }
-            # Add the kanji's radicals to the radical set
             radicals = kanji_set[kanji]["radicals"]
             radical_set.update(radicals)
 
-        # Process radicals from radical data
         for radical in details.get("radicals", []):
-            radical_set.add(radical)  # Add each radical to the set
+            radical_set.add(radical)
 
     return kanji_set, radical_set
 
@@ -55,12 +57,10 @@ def get_keyword_and_mnemonic(character):
     if response.status_code == 200:
         print("Parsing JPDB.io response")
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Extract the keyword
+
         keyword_div = soup.find('h6', string="Keyword")
         keyword = keyword_div.find_next('div').text if keyword_div else "No keyword found"
         
-        # Extract the mnemonic
         mnemonic_div = soup.find('div', class_='mnemonic')
         mnemonic = mnemonic_div.decode_contents().strip() if mnemonic_div else "No mnemonic found"
         
@@ -96,10 +96,10 @@ def create_cards(data, is_radical):
             print(f"Processing {character}...")
 
             keyword, mnemonic = get_keyword_and_mnemonic(character)
-            # Create a radical-specific note
+            
             note = {
-                "deckName": "Script Testing",  # Replace with your desired deck name
-                "modelName": "Japanese Radicals",  # Model name for radical cards
+                "deckName": ANKI_DECK,
+                "modelName": RADICAL_NOTE_TYPE,
                 "fields": {
                     "Character": character,
                     "Keyword": keyword,
@@ -115,13 +115,13 @@ def create_cards(data, is_radical):
                 continue
 
             print(f"Processing {character}...")
-            # Create a kanji-specific note
+            
             radicals = ", ".join(details["radicals"])
             keyword, mnemonic = get_keyword_and_mnemonic(character)
 
             note = {
-                "deckName": "Script Testing",  # Replace with your desired deck name
-                "modelName": "Japanese Kanji",  # Model name for kanji cards
+                "deckName": ANKI_DECK,
+                "modelName": KANJI_NOTE_TYPE,
                 "fields": {
                     "Character": character,
                     "Keyword": keyword,
