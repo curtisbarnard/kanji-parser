@@ -2,9 +2,15 @@ import regex as re
 import json
 import os
 import requests
+import urllib.parse
+from bs4 import BeautifulSoup
 
 ANKI_CONNECT_URL = "http://localhost:8765"
-KANJI_OUTPUT = "kanji_to_add.json"
+ANKI_DECK = "Script Testing"
+VOCAB_NOTE_TYPE = "yomitan Japanese"
+KANJI_NOTE_TYPE = "Japanese Kanji"
+RADICAL_NOTE_TYPE = "Japanese Radicals"
+KRADFILE = "kanjitoradical/kradfile-combined.json"
 
 def invoke(action, **params):
     request = {'action': action, 'params': params, 'version': 6}
@@ -43,13 +49,22 @@ def get_note_id_for_cards(cards_ids):
     return response
 
 def get_notes_with_missing_kanji():
-    query = 'note:"yomitan Japanese" Kanji:'
+    query = f'note:"{VOCAB_NOTE_TYPE}" Kanji:'
+    response = invoke("findNotes", query=query)
+    return response
+
+def note_exists(character):
+    query = f"Character:{character}"
     response = invoke("findNotes", query=query)
     return response
 
 def update_note(note_id, new_kanji):
     note = {"id": note_id, "fields": {"Kanji": new_kanji}}
     response = invoke("updateNoteFields", note=note)
+    return response
+
+def add_note(note):
+    response = invoke("addNote", note=note)
     return response
 
 def suspend_all_locked():
@@ -98,10 +113,10 @@ def unlock_cards(note_type):
 
 def update_vocab_notes():
     note_ids = get_notes_with_missing_kanji()
-
     if not note_ids:
         print("No notes found with missing kanji.")
         return
+    print(f"Updating {len(note_ids)} notes with missing kanji to update")
 
     notes = get_note_data(note_ids)
     kanji_set = set()
@@ -113,25 +128,130 @@ def update_vocab_notes():
             print(f"Skipping {expression} as it doesn't contain kanji")
             continue
         kanji_set.update(kanji_list)
-        new_kanji = " ".join(kanji_list)
+        new_kanji = ", ".join(kanji_list)
         update_note(note_id, new_kanji)
-        invoke('addTags', notes=[note_id], tags=["locked"])
+        invoke('addTags', notes=[note_id], tags="locked")
 
     return kanji_set
 
+def get_keyword_and_mnemonic(character):
+    encoded_kanji = urllib.parse.quote(character)
+    url = f"https://jpdb.io/kanji/{encoded_kanji}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        print("Parsing JPDB.io response")
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        keyword_div = soup.find('h6', string="Keyword")
+        keyword = keyword_div.find_next('div').text if keyword_div else "No keyword found"
+        
+        mnemonic_div = soup.find('div', class_='mnemonic')
+        mnemonic = mnemonic_div.decode_contents().strip() if mnemonic_div else "No mnemonic found"
+        
+        return keyword, mnemonic
+    else:
+        print(f"Warning: Failed to fetch data for kanji '{character}', status code: {response.status_code}")
+        return "No keyword found", "No mnemonic found"
+    
 def extract_kanji(word):
     return re.findall(r'\p{Han}', word)
 
+def load_kanji_data(json_file):
+    try:
+        with open(json_file, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        print(f"Error: {json_file} not found.")
+        return {}
+    except json.JSONDecodeError:
+        print(f"Error: {json_file} is not a valid JSON file.")
+        return {}
+
+def map_kanji_and_radicals(kanji_list, kanji_data):
+    mapped_data = {}
+    for kanji in kanji_list:
+        mapped_data[kanji] = {
+            "radicals": kanji_data.get(kanji, [])
+        }
+    return mapped_data
+
+def create_sets(data):
+    kanji_set = {}
+    radical_set = set()
+
+    for kanji, details in data.items():
+        # Add kanji and its radicals
+        kanji_set[kanji] = {
+            "radicals": details.get("radicals", []),
+        }
+        # Update radical_set with the radicals for this kanji
+        radical_set.update(details.get("radicals", []))
+
+    return kanji_set, radical_set
+
+def create_cards(data, is_radical):
+    if is_radical:
+        for character in data:
+            if note_exists(character):
+                print(f"Skipping {character} as it already exists.")
+                continue
+            print(f"Processing {character}...")
+
+            keyword, mnemonic = get_keyword_and_mnemonic(character)
+            
+            note = {
+                "deckName": ANKI_DECK,
+                "modelName": RADICAL_NOTE_TYPE,
+                "fields": {
+                    "Character": character,
+                    "Keyword": keyword,
+                    "Mnemonic": mnemonic,
+                },
+                "tags": ["script_testing", "radical"]
+            }
+            add_note(note)
+    else:
+        for character, details in data.items():
+            if note_exists(character):
+                print(f"Skipping {character} as it already exists.")
+                continue
+
+            print(f"Processing {character}...")
+            
+            radicals = ", ".join(details["radicals"])
+            keyword, mnemonic = get_keyword_and_mnemonic(character)
+
+            note = {
+                "deckName": ANKI_DECK,
+                "modelName": KANJI_NOTE_TYPE,
+                "fields": {
+                    "Character": character,
+                    "Keyword": keyword,
+                    "Mnemonic": mnemonic,
+                    "Radicals": radicals
+                },
+                "tags": ["script_testing", "kanji", "locked"]
+            }
+            add_note(note)
+
+def create_kanji_and_radicals(kanji_list):
+    kanji_mapping_data = load_kanji_data(KRADFILE)
+    kanji_and_radicals = map_kanji_and_radicals(kanji_list, kanji_mapping_data)
+    kanji_data, radical_data = create_sets(kanji_and_radicals)
+    create_cards(kanji_data, is_radical=False)
+    create_cards(radical_data, is_radical=True)
+
 # Step 1 is to add kanji to all vocab cards and then create the kanji and radical cards if need be
 kanji_to_create = update_vocab_notes()
-radicals_to_create = create_kanji_cards(kanji_to_create)
-create_radical_cards(radicals_to_create)
+if kanji_to_create:
+    print(f"Creating cards for {len(kanji_to_create)} kanji")
+    create_kanji_and_radicals(kanji_to_create)
 
 # Step 2 is to move all new cards to known if their interval is greater than 45 days
 move_new_to_known()
 
 # Step 3 is to unlock any kanji cards that have all their radicals known
-unlock_cards("Japanese Kanji")
+unlock_cards(KANJI_NOTE_TYPE)
 
 # Step 4 is to unlock and vocab cards that have all their kanji known
-unlock_cards("yomitan Japanese")
+unlock_cards(VOCAB_NOTE_TYPE)
