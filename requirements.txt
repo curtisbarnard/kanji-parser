@@ -1,3 +1,4 @@
 regex
 requests
 beautifulsoup4
+keyboard

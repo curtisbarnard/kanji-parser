@@ -2,10 +2,11 @@ import regex as re
 import json
 import requests
 import urllib.parse
+import keyboard
 from bs4 import BeautifulSoup
 
 ANKI_CONNECT_URL = "http://localhost:8765"
-ANKI_DECK = "Script Testing"
+ANKI_DECK = "Kanji and Radicals"
 VOCAB_NOTE_TYPE = "yomitan Japanese" #"JPDB Japanese Vocab"
 KANJI_NOTE_TYPE = "Japanese Kanji"
 RADICAL_NOTE_TYPE = "Japanese Radicals"
@@ -35,9 +36,9 @@ def get_card_data(card_ids):
     response = invoke("cardsInfo", cards=card_ids)
     return response
 
-def get_card_interval(card_id):
-    response = invoke("getIntervals", cards=[card_id])
-    return response[0]
+def get_intervals(card_ids):
+    response = invoke("getIntervals", cards=card_ids)
+    return response
 
 def get_note_data(note_ids):
     response = invoke("notesInfo", notes=note_ids)
@@ -69,76 +70,94 @@ def add_note(note):
 def suspend_all_locked():
     locked_cards = get_cards_by_tag('locked')
     invoke('suspend', cards=locked_cards)
+    print("🔐 Suspended all locked cards")
 
 def move_new_to_known():
     cards_to_update = []
     new_cards = get_cards_by_tag('new')
+    intervals = get_intervals(new_cards)
     total = len(new_cards)
     current = 0
-    print(f"Checking if {total} in progress cards can be moved to known")
+    print(f"Checking {total} cards to see if any can be moved to known...")
 
-    for card_id in new_cards:
+    for card_id, interval in zip(new_cards, intervals):
         current += 1
-        print(f"\rProcessing {current}/{total}...", end="", flush=True)
+        print(f"\rChecking {current}/{total}...", end="", flush=True)
 
-        interval = get_card_interval(card_id)
         if interval >= 45:
             cards_to_update.append(card_id)
-    if not cards_to_update:
-        print("No cards to move to known")
-        return
-    else:
+    if cards_to_update:
         replace_tags(cards_to_update, 'known', 'new')
+        print(f"\n✅ {len(cards_to_update)} cards moved to known")
+    else:
+        print(f"\n📝 No new cards known. Keep studying!")
         
 def replace_tags(card_ids, new_tag, old_tag):
-    print(f"Moving {len(card_ids)} cards to {new_tag}")
     note_ids = get_note_id_for_cards(card_ids)
     invoke('replaceTags', notes=note_ids, replace_with_tag=new_tag, tag_to_replace=old_tag)
 
-def check_dependencies_known(characters):
+def check_dependencies_known(characters, known_cards):
     for character in characters:
-        response = invoke('findCards', query=f'Character:{character} tag:known')
-        if not response:
+        if any(card.get("fields",{}).get("Character",{}).get("value") == character for card in known_cards):
+            continue
+        else:
             return False
     return True
 
 def unlock_cards(note_type):
-    # Add some sort of progress logging
     dependency_type = 'Radicals' if note_type == 'Japanese Kanji' else 'Kanji'
-    cards_to_unsuspend = []
-    card_ids = get_cards_by_tag('locked', note_type)
-    for card_id in card_ids:
+    expression_type = 'Character' if note_type == 'Japanese Kanji' else 'Expression'
+    cards_to_unlock = []
+    locked_card_ids = get_cards_by_tag('locked', note_type)
+    known_card_ids = get_cards_by_tag('known')
+    known_card_data = get_card_data(known_card_ids)
+    total = len(locked_card_ids)
+    current = 0
+    print(f"Checking {total} {dependency_type} cards to see if any can be unlocked...")
+
+    for card_id in locked_card_ids:
+        current += 1
+        print(f"\rChecking {current}/{total}...", end="", flush=True)
+
         data = get_card_data([card_id])[0]
         dependencies = data['fields'][dependency_type]['value']
         dependency_array = [dependency.strip() for dependency in dependencies.split(',')]
-        if check_dependencies_known(dependency_array):
-            replace_tags([card_id], 'new', 'locked')
+        if check_dependencies_known(dependency_array, known_card_data):
             cards_to_unsuspend.append(card_id)
-        else:
-            print(f"Card {card_id} still has not yet known {dependency_type}")
-    invoke('unsuspend', cards=cards_to_unsuspend)
+    if len(cards_to_unlock) > 0:
+        replace_tags(cards_to_unsuspend, 'new', 'locked')
+        invoke('unsuspend', cards=cards_to_unlock)
+        print(f"\n🔓 {len(cards_to_unlock)} cards unlocked!")
+    else:
+        print(f"\n📝 No cards to unlock. Keep studying!")
 
 def update_vocab_notes():
     note_ids = get_notes_with_missing_kanji()
     if not note_ids:
         print("No notes found with missing kanji.")
         return
-    print(f"Updating {len(note_ids)} notes with missing kanji to update")
+    print(f"🈳 Checking {len(note_ids)} notes with missing kanji...")
 
     notes = get_note_data(note_ids)
     kanji_set = set()
+    updated = 0
     for note in notes:
         note_id = note['noteId']
         expression = note['fields']['Expression']['value']
         kanji_list = extract_kanji(expression)
         if not kanji_list:
-            print(f"Skipping {expression} as it doesn't contain kanji")
             continue
+        updated += 1
         kanji_set.update(kanji_list)
         new_kanji = ", ".join(kanji_list)
         update_note(note_id, new_kanji)
-        # TODO need to make sure card isn't already new or known before adding locked tag
-        # invoke('addTags', notes=[note_id], tags="locked")
+        current_tags = invoke('getNoteTags', note=note_id)
+        if "known" not in current_tags and "new" not in current_tags:
+            invoke('addTags', notes=[note_id], tags="locked")
+    if updated > 0:
+        print(f"🟢 Updated {len(updated)} vocab cards with kanji!")
+    else:
+        print(f"No notes need kanji added")
 
     return kanji_set
 
@@ -157,7 +176,7 @@ def get_keyword_and_mnemonic(character):
         
         return keyword, mnemonic
     else:
-        print(f"Warning: Failed to fetch data for kanji '{character}', status code: {response.status_code}")
+        print(f"🟡 Warning: Failed to fetch data for '{character}', status code: {response.status_code}")
         return "", ""
     
 def extract_kanji(word):
@@ -168,10 +187,10 @@ def load_kanji_data(json_file):
         with open(json_file, 'r', encoding='utf-8') as file:
             return json.load(file)
     except FileNotFoundError:
-        print(f"Error: {json_file} not found.")
+        print(f"🔴 Error: {json_file} not found.")
         return {}
     except json.JSONDecodeError:
-        print(f"Error: {json_file} is not a valid JSON file.")
+        print(f"🔴 Error: {json_file} is not a valid JSON file.")
         return {}
 
 def map_kanji_and_radicals(kanji_list, kanji_data):
@@ -202,6 +221,7 @@ def create_sets(data):
 def create_cards(data, is_radical):
     total = len(data)  # Total number of items to process
     current = 0
+    created = 0
     char_type = 'radicals' if is_radical else 'kanji'
     print(f'There are {total} {char_type} to process')
 
@@ -210,9 +230,8 @@ def create_cards(data, is_radical):
             current += 1
 
             if note_exists(character):
-                print(f"Skipping {character} as it already exists.")
                 continue
-            print(f"[{current}/{total}] Processing {character}...")
+            print(f"\r{current}/{total} Processing...", end="", flush=True)
 
             keyword, mnemonic = get_keyword_and_mnemonic(character)
             
@@ -227,15 +246,16 @@ def create_cards(data, is_radical):
                 "tags": ["script_testing", "radical"]
             }
             add_note(note)
+            created += 1
+        print(f"🟢 Created {len(created)} new radical cards!")
+
     else:
         for character, details in data.items():
             current += 1
 
             if note_exists(character):
-                print(f"Skipping {character} as it already exists.")
                 continue
-
-            print(f"[{current}/{total}] Processing {character}...")
+            print(f"\r{current}/{total} Processing...", end="", flush=True)
             
             radicals = ", ".join(details["radicals"])
             keyword, mnemonic = get_keyword_and_mnemonic(character)
@@ -252,6 +272,8 @@ def create_cards(data, is_radical):
                 "tags": ["script_testing", "kanji", "locked"]
             }
             add_note(note)
+            created += 1
+        print(f"🟢 Created {len(created)} new radical cards!")
 
 def create_kanji_and_radicals(kanji_list):
     kanji_mapping_data = load_kanji_data(KRADFILE)
@@ -261,9 +283,11 @@ def create_kanji_and_radicals(kanji_list):
     create_cards(radical_data, is_radical=True)
 
 # Step 1 is to add kanji to all vocab cards and then create the kanji and radical cards if need be
+print("This script will evaluate your ANKI collection and make sure that it has\nall the correct kanji and radicals needed to learn new vocab words. Make\nsure you let it run to completion so it doesn't leave any cards partially\ncomplete.\n\nPlease press the spacebar to continue...(or ctrl+c to quit)")
+keyboard.wait("space")
+print("🚀 Off we go!")
 kanji_to_create = update_vocab_notes()
 if kanji_to_create:
-    print(f"Creating cards for {len(kanji_to_create)} kanji")
     create_kanji_and_radicals(kanji_to_create)
 
 # Step 2 is to move all new cards to known if their interval is greater than 45 days
@@ -275,4 +299,6 @@ unlock_cards(KANJI_NOTE_TYPE)
 # Step 4 is to unlock and vocab cards that have all their kanji known
 unlock_cards(VOCAB_NOTE_TYPE)
 
+# Make sure any cards tagged locked are suspended
 suspend_all_locked()
+print("🎉 Updates are completed. Don't forget to run this script on a regular cadence to unlock new cards!")
