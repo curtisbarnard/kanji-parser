@@ -50,10 +50,6 @@ def process_json_data(file_path):
 
     return vocab_list, char_list
 
-# Usage
-
-vocab_list, char_list = process_json_data(REVIEWS)
-
 def note_exists(character):
     query = f"Character:{character}"
     response = invoke("findNotes", query=query)
@@ -73,7 +69,6 @@ def get_keyword_and_mnemonic(character):
     url = f"https://jpdb.io/kanji/{encoded_kanji}"
     response = requests.get(url)
     if response.status_code == 200:
-        print("Parsing JPDB.io response")
         soup = BeautifulSoup(response.text, 'html.parser')
 
         keyword_div = soup.find('h6', string="Keyword")
@@ -92,7 +87,6 @@ def get_description(word):
     url = f"https://jpdb.io/search?q={encoded_word}"
     response = requests.get(url)
     if response.status_code == 200:
-        print("Parsing JPDB.io response")
         soup = BeautifulSoup(response.text, 'html.parser')
 
         subsection_meanings = soup.find('div', class_='subsection-meanings')
@@ -128,22 +122,20 @@ def create_vocab_notes(vocab_list):
         }
         add_note(note)
 
-create_vocab_notes(vocab_list)
-
-
-
-
-
-
-
-
 def create_cards(data, is_radical):
+    total = len(data)  # Total number of items to process
+    current = 0
+    char_type = 'radicals' if is_radical else 'kanji'
+    print(f'There are {total} {char_type} to process')
+
     if is_radical:
-        for character in data:
+        for character, details in data.items():
+            current += 1
+
             if note_exists(character):
                 print(f"Skipping {character} as it already exists.")
                 continue
-            print(f"Processing {character}...")
+            print(f"[{current}/{total}] Processing {character}...")
 
             keyword, mnemonic = get_keyword_and_mnemonic(character)
             
@@ -155,16 +147,17 @@ def create_cards(data, is_radical):
                     "Keyword": keyword,
                     "Mnemonic": mnemonic,
                 },
-                "tags": ["script_testing", "radical"]
+                "tags": ["import_testing", "radical", details["tag"]]
             }
             add_note(note)
     else:
         for character, details in data.items():
+            current += 1
             if note_exists(character):
                 print(f"Skipping {character} as it already exists.")
                 continue
 
-            print(f"Processing {character}...")
+            print(f"[{current}/{total}] Processing {character}...")
             
             radicals = ", ".join(details["radicals"])
             keyword, mnemonic = get_keyword_and_mnemonic(character)
@@ -178,7 +171,7 @@ def create_cards(data, is_radical):
                     "Mnemonic": mnemonic,
                     "Radicals": radicals
                 },
-                "tags": ["script_testing", "kanji", "locked"]
+                "tags": ["import_testing", "kanji", details["tag"]]
             }
             add_note(note)
 
@@ -193,9 +186,41 @@ def load_kanji_data(json_file):
         print(f"Error: {json_file} is not a valid JSON file.")
         return {}
     
-def create_kanji_and_radicals(kanji_list):
+def map_kanji_and_radicals(char_list, kanji_data):
+    mapped_data = {}
+    for char in char_list:
+        mapped_data[char['character']] = {
+            "radicals": kanji_data.get(char['character'], []),
+            "tag": char['tag']
+        }
+    return mapped_data
+
+def create_sets(data):
+    kanji_set = {}
+    radical_set = {}
+
+    for kanji, details in data.items():
+        radicals = details.get("radicals", [])
+
+        if not radicals:
+            radical_set[kanji] = {"tag": details.get("tag", "")}
+        else:
+            kanji_set[kanji] = {
+                "radicals": radicals,
+                "tag": details.get("tag", "")
+            }
+            for radical in radicals:
+                radical_set.setdefault(radical, {"tag": ""})
+
+    return kanji_set, radical_set
+    
+def create_kanji_and_radicals(char_list):
     kanji_mapping_data = load_kanji_data(KRADFILE)
-    kanji_and_radicals = map_kanji_and_radicals(kanji_list, kanji_mapping_data)
+    kanji_and_radicals = map_kanji_and_radicals(char_list, kanji_mapping_data)
     kanji_data, radical_data = create_sets(kanji_and_radicals)
     create_cards(kanji_data, is_radical=False)
     create_cards(radical_data, is_radical=True)
+
+vocab_list, char_list = process_json_data(REVIEWS)
+# create_vocab_notes(vocab_list)
+create_kanji_and_radicals(char_list)
