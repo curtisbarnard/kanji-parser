@@ -1,6 +1,5 @@
 import regex as re
 import json
-import os
 import requests
 import urllib.parse
 from bs4 import BeautifulSoup
@@ -143,15 +142,15 @@ def get_keyword_and_mnemonic(character):
         soup = BeautifulSoup(response.text, 'html.parser')
 
         keyword_div = soup.find('h6', string="Keyword")
-        keyword = keyword_div.find_next('div').text if keyword_div else "No keyword found"
+        keyword = keyword_div.find_next('div').text if keyword_div else ""
         
         mnemonic_div = soup.find('div', class_='mnemonic')
-        mnemonic = mnemonic_div.decode_contents().strip() if mnemonic_div else "No mnemonic found"
+        mnemonic = mnemonic_div.decode_contents().strip() if mnemonic_div else ""
         
         return keyword, mnemonic
     else:
         print(f"Warning: Failed to fetch data for kanji '{character}', status code: {response.status_code}")
-        return "No keyword found", "No mnemonic found"
+        return "", ""
     
 def extract_kanji(word):
     return re.findall(r'\p{Han}', word)
