@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 
 ANKI_CONNECT_URL = "http://localhost:8765"
 ANKI_DECK = "Script Testing"
-VOCAB_NOTE_TYPE = "yomitan Japanese"
+VOCAB_NOTE_TYPE = "yomitan Japanese" #"JPDB Japanese Vocab"
 KANJI_NOTE_TYPE = "Japanese Kanji"
 RADICAL_NOTE_TYPE = "Japanese Radicals"
 KRADFILE = "kanjitoradical/kradfile-combined.json"
@@ -73,7 +73,14 @@ def suspend_all_locked():
 def move_new_to_known():
     cards_to_update = []
     new_cards = get_cards_by_tag('new')
+    total = len(new_cards)
+    current = 0
+    print(f"Checking if {total} in progress cards can be moved to known")
+
     for card_id in new_cards:
+        current += 1
+        print(f"\rProcessing {current}/{total}...", end="", flush=True)
+
         interval = get_card_interval(card_id)
         if interval >= 45:
             cards_to_update.append(card_id)
@@ -96,6 +103,7 @@ def check_dependencies_known(characters):
     return True
 
 def unlock_cards(note_type):
+    # Add some sort of progress logging
     dependency_type = 'Radicals' if note_type == 'Japanese Kanji' else 'Kanji'
     cards_to_unsuspend = []
     card_ids = get_cards_by_tag('locked', note_type)
@@ -129,7 +137,8 @@ def update_vocab_notes():
         kanji_set.update(kanji_list)
         new_kanji = ", ".join(kanji_list)
         update_note(note_id, new_kanji)
-        invoke('addTags', notes=[note_id], tags="locked")
+        # TODO need to make sure card isn't already new or known before adding locked tag
+        # invoke('addTags', notes=[note_id], tags="locked")
 
     return kanji_set
 
@@ -138,7 +147,6 @@ def get_keyword_and_mnemonic(character):
     url = f"https://jpdb.io/kanji/{encoded_kanji}"
     response = requests.get(url)
     if response.status_code == 200:
-        print("Parsing JPDB.io response")
         soup = BeautifulSoup(response.text, 'html.parser')
 
         keyword_div = soup.find('h6', string="Keyword")
@@ -179,22 +187,32 @@ def create_sets(data):
     radical_set = set()
 
     for kanji, details in data.items():
-        # Add kanji and its radicals
-        kanji_set[kanji] = {
-            "radicals": details.get("radicals", []),
-        }
-        # Update radical_set with the radicals for this kanji
-        radical_set.update(details.get("radicals", []))
+        radicals = details.get("radicals", [])
+
+        if not radicals:
+            radical_set.add(kanji)
+        else:
+            kanji_set[kanji] = {
+                "radicals": radicals,
+            }
+            radical_set.update(radicals)
 
     return kanji_set, radical_set
 
 def create_cards(data, is_radical):
+    total = len(data)  # Total number of items to process
+    current = 0
+    char_type = 'radicals' if is_radical else 'kanji'
+    print(f'There are {total} {char_type} to process')
+
     if is_radical:
         for character in data:
+            current += 1
+
             if note_exists(character):
                 print(f"Skipping {character} as it already exists.")
                 continue
-            print(f"Processing {character}...")
+            print(f"[{current}/{total}] Processing {character}...")
 
             keyword, mnemonic = get_keyword_and_mnemonic(character)
             
@@ -211,11 +229,13 @@ def create_cards(data, is_radical):
             add_note(note)
     else:
         for character, details in data.items():
+            current += 1
+
             if note_exists(character):
                 print(f"Skipping {character} as it already exists.")
                 continue
 
-            print(f"Processing {character}...")
+            print(f"[{current}/{total}] Processing {character}...")
             
             radicals = ", ".join(details["radicals"])
             keyword, mnemonic = get_keyword_and_mnemonic(character)
@@ -254,3 +274,5 @@ unlock_cards(KANJI_NOTE_TYPE)
 
 # Step 4 is to unlock and vocab cards that have all their kanji known
 unlock_cards(VOCAB_NOTE_TYPE)
+
+suspend_all_locked()
