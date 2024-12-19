@@ -2,7 +2,6 @@ import regex as re
 import json
 import requests
 import urllib.parse
-import keyboard
 from bs4 import BeautifulSoup
 
 ANKI_CONNECT_URL = "http://localhost:8765"
@@ -84,7 +83,7 @@ def move_new_to_known():
         current += 1
         print(f"\rChecking {current}/{total}...", end="", flush=True)
 
-        if interval >= 45:
+        if interval >= 21:
             cards_to_update.append(card_id)
     if cards_to_update:
         replace_tags(cards_to_update, 'known', 'new')
@@ -106,14 +105,13 @@ def check_dependencies_known(characters, known_cards):
 
 def unlock_cards(note_type):
     dependency_type = 'Radicals' if note_type == 'Japanese Kanji' else 'Kanji'
-    expression_type = 'Character' if note_type == 'Japanese Kanji' else 'Expression'
     cards_to_unlock = []
     locked_card_ids = get_cards_by_tag('locked', note_type)
     known_card_ids = get_cards_by_tag('known')
     known_card_data = get_card_data(known_card_ids)
     total = len(locked_card_ids)
     current = 0
-    print(f"Checking {total} {dependency_type} cards to see if any can be unlocked...")
+    print(f"Checking {total} {note_type} cards to see if any can be unlocked...")
 
     for card_id in locked_card_ids:
         current += 1
@@ -123,9 +121,9 @@ def unlock_cards(note_type):
         dependencies = data['fields'][dependency_type]['value']
         dependency_array = [dependency.strip() for dependency in dependencies.split(',')]
         if check_dependencies_known(dependency_array, known_card_data):
-            cards_to_unsuspend.append(card_id)
+            cards_to_unlock.append(card_id)
     if len(cards_to_unlock) > 0:
-        replace_tags(cards_to_unsuspend, 'new', 'locked')
+        replace_tags(cards_to_unlock, 'new', 'locked')
         invoke('unsuspend', cards=cards_to_unlock)
         print(f"\n🔓 {len(cards_to_unlock)} cards unlocked!")
     else:
@@ -283,8 +281,7 @@ def create_kanji_and_radicals(kanji_list):
     create_cards(radical_data, is_radical=True)
 
 # Step 1 is to add kanji to all vocab cards and then create the kanji and radical cards if need be
-print("This script will evaluate your ANKI collection and make sure that it has\nall the correct kanji and radicals needed to learn new vocab words. Make\nsure you let it run to completion so it doesn't leave any cards partially\ncomplete.\n\nPlease press the spacebar to continue...(or ctrl+c to quit)")
-keyboard.wait("space")
+print("This script will evaluate your ANKI collection and make sure that it has\nall the correct kanji and radicals needed to learn new vocab words. Make\nsure you let it run to completion so it doesn't leave any cards partially\ncomplete.\n")
 print("🚀 Off we go!")
 kanji_to_create = update_vocab_notes()
 if kanji_to_create:
