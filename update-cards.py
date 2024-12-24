@@ -153,7 +153,7 @@ def update_vocab_notes():
         if "known" not in current_tags and "new" not in current_tags:
             invoke('addTags', notes=[note_id], tags="locked")
     if updated > 0:
-        print(f"🟢 Updated {len(updated)} vocab cards with kanji!")
+        print(f"🟢 Updated {updated} vocab cards with kanji!")
     else:
         print(f"No notes need kanji added")
 
@@ -241,11 +241,11 @@ def create_cards(data, is_radical):
                     "Keyword": keyword,
                     "Mnemonic": mnemonic,
                 },
-                "tags": ["script_testing", "radical"]
+                "tags": ["radical"]
             }
             add_note(note)
             created += 1
-        print(f"🟢 Created {len(created)} new radical cards!")
+        print(f"🟢 Created {created} new radical cards!")
 
     else:
         for character, details in data.items():
@@ -267,11 +267,11 @@ def create_cards(data, is_radical):
                     "Mnemonic": mnemonic,
                     "Radicals": radicals
                 },
-                "tags": ["script_testing", "kanji", "locked"]
+                "tags": ["kanji", "locked"]
             }
             add_note(note)
             created += 1
-        print(f"🟢 Created {len(created)} new radical cards!")
+        print(f"🟢 Created {created} new {char_type} cards!")
 
 def create_kanji_and_radicals(kanji_list):
     kanji_mapping_data = load_kanji_data(KRADFILE)
