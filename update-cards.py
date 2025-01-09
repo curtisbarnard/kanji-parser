@@ -194,8 +194,11 @@ def load_kanji_data(json_file):
 def map_kanji_and_radicals(kanji_list, kanji_data):
     mapped_data = {}
     for kanji in kanji_list:
+        radicals = kanji_data.get(kanji, [])
+        radicals = [radical for radical in radicals if radical != kanji]
+        
         mapped_data[kanji] = {
-            "radicals": kanji_data.get(kanji, [])
+            "radicals": radicals
         }
     return mapped_data
 
