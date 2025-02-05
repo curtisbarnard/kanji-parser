@@ -5,7 +5,7 @@ import urllib.parse
 from bs4 import BeautifulSoup
 
 ANKI_CONNECT_URL = "http://localhost:8765"
-ANKI_DECK = "Kanji and Radicals"
+KANJI_DECK = "Kanji and Radicals"
 VOCAB_NOTE_TYPE = "yomitan Japanese" #"JPDB Japanese Vocab"
 KANJI_NOTE_TYPE = "Japanese Kanji"
 RADICAL_NOTE_TYPE = "Japanese Radicals"
@@ -53,7 +53,7 @@ def get_notes_with_missing_kanji():
     return response
 
 def note_exists(character):
-    query = f"Character:{character}"
+    query = f'Character:{character} deck:"{KANJI_DECK}"'
     response = invoke("findNotes", query=query)
     return response
 
@@ -81,7 +81,7 @@ def move_new_to_known():
 
     for card_id, interval in zip(new_cards, intervals):
         current += 1
-        print(f"\rChecking {current}/{total}...", end="", flush=True)
+        print(f"\r{current}/{total}...", end="", flush=True)
 
         if interval >= 21:
             cards_to_update.append(card_id)
@@ -115,7 +115,7 @@ def unlock_cards(note_type):
 
     for card_id in locked_card_ids:
         current += 1
-        print(f"\rChecking {current}/{total}...", end="", flush=True)
+        print(f"\r{current}/{total}...", end="", flush=True)
 
         data = get_card_data([card_id])[0]
         dependencies = data['fields'][dependency_type]['value']
@@ -237,7 +237,7 @@ def create_cards(data, is_radical):
             keyword, mnemonic = get_keyword_and_mnemonic(character)
             
             note = {
-                "deckName": ANKI_DECK,
+                "deckName": KANJI_DECK,
                 "modelName": RADICAL_NOTE_TYPE,
                 "fields": {
                     "Character": character,
@@ -248,7 +248,8 @@ def create_cards(data, is_radical):
             }
             add_note(note)
             created += 1
-        print(f"🟢 Created {created} new radical cards!")
+        if created > 0:
+            print(f"🟢 Created {created} new radical cards!")
 
     else:
         for character, details in data.items():
@@ -262,7 +263,7 @@ def create_cards(data, is_radical):
             keyword, mnemonic = get_keyword_and_mnemonic(character)
 
             note = {
-                "deckName": ANKI_DECK,
+                "deckName": KANJI_DECK,
                 "modelName": KANJI_NOTE_TYPE,
                 "fields": {
                     "Character": character,
@@ -274,7 +275,8 @@ def create_cards(data, is_radical):
             }
             add_note(note)
             created += 1
-        print(f"🟢 Created {created} new {char_type} cards!")
+        if created > 0:
+            print(f"🟢 Created {created} new kanji cards!")
 
 def create_kanji_and_radicals(kanji_list):
     kanji_mapping_data = load_kanji_data(KRADFILE)
