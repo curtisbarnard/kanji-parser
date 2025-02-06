@@ -31,6 +31,12 @@ def get_cards_by_tag(tag, note_type=None):
     card_ids = invoke('findCards', query=query)
     return card_ids
 
+def get_cards_from_notes(note_ids):
+    # Convert list of note IDs to a string of OR conditions
+    query = ' or '.join([f'nid:{nid}' for nid in note_ids])
+    card_ids = invoke('findCards', query=query)
+    return card_ids
+
 def get_card_data(card_ids):
     response = invoke("cardsInfo", cards=card_ids)
     return response
@@ -48,7 +54,7 @@ def get_note_id_for_cards(cards_ids):
     return response
 
 def get_notes_with_missing_kanji():
-    query = f'note:"{VOCAB_NOTE_TYPE}" Kanji:'
+    query = f'note:"{VOCAB_NOTE_TYPE}" Kanji: tag:locked'
     response = invoke("findNotes", query=query)
     return response
 
@@ -64,6 +70,10 @@ def update_note(note_id, new_kanji):
 
 def add_note(note):
     response = invoke("addNote", note=note)
+    return response
+
+def replace_note_tags(notes, new_tag, old_tag):
+    response = invoke('replaceTags', notes=notes, replace_with_tag=new_tag, tag_to_replace=old_tag)
     return response
 
 def suspend_all_locked():
@@ -86,14 +96,14 @@ def move_new_to_known():
         if interval >= 21:
             cards_to_update.append(card_id)
     if cards_to_update:
-        replace_tags(cards_to_update, 'known', 'new')
+        replace_card_tags(cards_to_update, 'known', 'new')
         print(f"\n✅ {len(cards_to_update)} cards moved to known")
     else:
         print(f"\n📝 No new cards known. Keep studying!")
         
-def replace_tags(card_ids, new_tag, old_tag):
+def replace_card_tags(card_ids, new_tag, old_tag):
     note_ids = get_note_id_for_cards(card_ids)
-    invoke('replaceTags', notes=note_ids, replace_with_tag=new_tag, tag_to_replace=old_tag)
+    replace_note_tags(note_ids, new_tag, old_tag)
 
 def check_dependencies_known(characters, known_cards):
     for character in characters:
@@ -123,7 +133,7 @@ def unlock_cards(note_type):
         if check_dependencies_known(dependency_array, known_card_data):
             cards_to_unlock.append(card_id)
     if len(cards_to_unlock) > 0:
-        replace_tags(cards_to_unlock, 'new', 'locked')
+        replace_card_tags(cards_to_unlock, 'new', 'locked')
         invoke('unsuspend', cards=cards_to_unlock)
         print(f"\n🔓 {len(cards_to_unlock)} cards unlocked!")
     else:
@@ -137,6 +147,7 @@ def update_vocab_notes():
     print(f"🈳 Checking {len(note_ids)} notes with missing kanji...")
 
     notes = get_note_data(note_ids)
+    notes_to_unlock = []
     kanji_set = set()
     updated = 0
     for note in notes:
@@ -144,6 +155,7 @@ def update_vocab_notes():
         expression = note['fields']['Expression']['value']
         kanji_list = extract_kanji(expression)
         if not kanji_list:
+            notes_to_unlock.append(note_id)
             continue
         updated += 1
         kanji_set.update(kanji_list)
@@ -153,9 +165,14 @@ def update_vocab_notes():
         if "known" not in current_tags and "new" not in current_tags:
             invoke('addTags', notes=[note_id], tags="locked")
     if updated > 0:
-        print(f"🟢 Updated {updated} vocab cards with kanji!")
+        print(f"🟢 Updated {updated} vocab notes with kanji!")
     else:
         print(f"No notes need kanji added")
+    if len(notes_to_unlock) > 0:
+        replace_note_tags(notes_to_unlock, 'new', 'locked')
+        cards_to_unlock = get_cards_from_notes(notes_to_unlock)
+        invoke('unsuspend', cards=cards_to_unlock)
+        print(f"🔓 {len(notes_to_unlock)} notes without kanji unlocked!")
 
     return kanji_set
 
@@ -285,14 +302,14 @@ def create_kanji_and_radicals(kanji_list):
     create_cards(kanji_data, is_radical=False)
     create_cards(radical_data, is_radical=True)
 
-# Step 1 is to add kanji to all vocab cards and then create the kanji and radical cards if need be
+# Step 1 is to add kanji to all vocab cards and then create the kanji and radical cards if need be. Also unlock any vocab cards that don't have kanji (hiragana or katakana only)
 print("This script will evaluate your ANKI collection and make sure that it has\nall the correct kanji and radicals needed to learn new vocab words. Make\nsure you let it run to completion so it doesn't leave any cards partially\ncomplete.\n")
 print("🚀 Off we go!")
 kanji_to_create = update_vocab_notes()
 if kanji_to_create:
     create_kanji_and_radicals(kanji_to_create)
 
-# Step 2 is to move all new cards to known if their interval is greater than 45 days
+# Step 2 is to move all new cards to known if their interval is greater than 21 days
 move_new_to_known()
 
 # Step 3 is to unlock any kanji cards that have all their radicals known
