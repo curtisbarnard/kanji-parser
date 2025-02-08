@@ -261,7 +261,7 @@ def create_cards(data, is_radical):
                     "Keyword": keyword,
                     "Mnemonic": mnemonic,
                 },
-                "tags": ["radical"]
+                "tags": ["radical", "new"]
             }
             add_note(note)
             created += 1
