@@ -266,7 +266,7 @@ def create_cards(data, is_radical):
             add_note(note)
             created += 1
         if created > 0:
-            print(f"🟢 Created {created} new radical cards!")
+            print(f"\n🟢 Created {created} new radical cards!")
 
     else:
         for character, details in data.items():
@@ -293,7 +293,7 @@ def create_cards(data, is_radical):
             add_note(note)
             created += 1
         if created > 0:
-            print(f"🟢 Created {created} new kanji cards!")
+            print(f"\n🟢 Created {created} new kanji cards!")
 
 def create_kanji_and_radicals(kanji_list):
     kanji_mapping_data = load_kanji_data(KRADFILE)
