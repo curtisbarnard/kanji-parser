@@ -1,0 +1,1 @@
+Sourced from https://github.com/stephenmk/yomitan-jlpt-vocab and https://www.tanos.co.uk/jlpt/
